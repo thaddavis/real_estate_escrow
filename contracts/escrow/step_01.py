@@ -1,7 +1,5 @@
 from typing import List
-
 from pyteal import *
-
 
 def approval(
     owner_address: Expr,
