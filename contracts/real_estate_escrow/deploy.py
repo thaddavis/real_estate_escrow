@@ -63,7 +63,7 @@ def main():
     # declare application state storage (immutable)
     local_ints = 0
     local_bytes = 0
-    global_ints = 6
+    global_ints = 7
     global_bytes = 3
     global_schema = transaction.StateSchema(global_ints, global_bytes)
     local_schema = transaction.StateSchema(local_ints, local_bytes)

@@ -14,15 +14,17 @@ def approval_program():
     global_app_id=Bytes("app_id") # byteslice
     
     pull_out=Bytes("pull_out") # CONSTANT
+    deposit_escrow=Bytes("deposit_escrow") # CONSTANT
     buyer_withdraw_funds=Bytes("buyer_withdraw_funds") # CONSTANT
     seller_withdraw_funds=Bytes("seller_withdraw_funds") # CONSTANT
     global_trigger_pull_out_called_counter = Bytes("trigger_pull_out_called_counter") # CONSTANT
+    global_trigger_fund_account_called_counter = Bytes("global_trigger_fund_account_called_counter") # CONSTANT
 
     scratch_int = ScratchVar(TealType.uint64)
+    scratch_int_b = ScratchVar(TealType.uint64)
     
     trigger_pull_out=Seq(
         scratch_int.store(App.globalGet(global_trigger_pull_out_called_counter)),
-        # detect overflow
         If(
             scratch_int.load() < Int(UINT64_MAX)
         )
@@ -56,6 +58,17 @@ def approval_program():
         Approve()
     )
 
+    trigger_fund_account=Seq(
+        scratch_int_b.store(App.globalGet(global_trigger_fund_account_called_counter)),
+        If(
+            scratch_int_b.load() < Int(UINT64_MAX)
+        )
+        .Then(
+            App.globalPut(global_trigger_fund_account_called_counter, App.globalGet(global_trigger_fund_account_called_counter) + Int(1))    
+        ),
+        Approve()
+    )
+
     return program.event(
         init=Seq(
             App.globalPut(global_creator, Txn.sender()),
@@ -67,6 +80,7 @@ def approval_program():
             App.globalPut(global_buyer, Txn.application_args[4]),
             App.globalPut(global_seller, Txn.application_args[5]),
             App.globalPut(global_trigger_pull_out_called_counter, Int(0)),
+            App.globalPut(global_trigger_fund_account_called_counter, Int(0)),
             Approve()
         ),
         no_op=Cond(
@@ -81,6 +95,13 @@ def approval_program():
             [
                 Txn.application_args[0] == buyer_withdraw_funds,
                 trigger_buyer_withdraw_funds
+            ],
+            [
+                And(
+                    Global.group_size() == Int(2),
+                    Gtxn[0].type_enum() == TxnType.Payment
+                ),
+                trigger_fund_account
             ]
         )
     )
