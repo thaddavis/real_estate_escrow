@@ -8,6 +8,7 @@ sys.path.append(str(Path(__file__).absolute().parent.parent))
 from utility.general import get_private_key_from_mnemonic
 from utility.state import read_global_state
 import config
+import json
 
 if __name__ == "__main__":
     algod_client = algod.AlgodClient(config.algod_token, config.algod_address)
@@ -17,4 +18,7 @@ if __name__ == "__main__":
         algod_client, account.address_from_private_key(creator_private_key), config.app_id
     ),
 
-    print("Global state:", global_state)
+    print("Global state: {}".format(
+            json.dumps(global_state, indent=4)
+        )
+    )

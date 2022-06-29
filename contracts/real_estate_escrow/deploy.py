@@ -6,7 +6,10 @@ from contract import approval_program, clear_state_program
 from pyteal import compileTeal, Mode
 from utility.general import get_private_key_from_mnemonic, wait_for_confirmation, compile_program, intToBytes
 from utility.state import read_global_state
+from utility.time import get_current_timestamp, get_future_timestamp_in_days, get_future_timestamp_in_secs
 import config
+import json
+import time
 
 # create new application
 def create_app(
@@ -63,8 +66,8 @@ def main():
     # declare application state storage (immutable)
     local_ints = 0
     local_bytes = 0
-    global_ints = 7
-    global_bytes = 3
+    global_ints = 10
+    global_bytes = 4
     global_schema = transaction.StateSchema(global_ints, global_bytes)
     local_schema = transaction.StateSchema(local_ints, local_bytes)
  
@@ -83,16 +86,32 @@ def main():
     )
 
     status = algod_client.status()
-    inspectionBegin = status["last-round"] + 10
-    inspectionEnd = inspectionBegin + 20
+    # inspectionBegin = status["last-round"] + 10
+    # inspectionEnd = inspectionBegin + 20
+    inspectionBegin = int(get_current_timestamp())
+    inspectionEnd = int(get_future_timestamp_in_secs(60))
+    inspectionExtension = int(get_future_timestamp_in_secs(120))
+
+    closingDate = int(get_future_timestamp_in_secs(240))
+    closingDateExtension = int(get_future_timestamp_in_secs(360))
+    
+    print('inspectionBegin', inspectionBegin)
+    print('inspectionEnd', inspectionEnd)
+    print('inspectionExtension', inspectionEnd)
+    print('closingDate', closingDate)
+    print('closingDateExtension', closingDateExtension)
 
     app_args = [
         intToBytes(inspectionBegin), #
         intToBytes(inspectionEnd), #
-        1000, # sale_price
-        100, # escrow_amount
-        "RHKHUONCBB7JOIQ2RDCSV3NUX5JFKLLOG2RKN4LRIJ6DQMAIBTFLLO72DM", # buyer
-        "QHGMAMCTEHZ2RQV2DRXSPAKIIT3REVK46CHNDJSW6WNXJLSJ7BB76NHDGY" # seller
+        intToBytes(inspectionExtension), #
+        intToBytes(closingDate), #
+        intToBytes(closingDateExtension), #
+        3000, # sale_price
+        1000, # escrow_amount
+        decode_address("RHKHUONCBB7JOIQ2RDCSV3NUX5JFKLLOG2RKN4LRIJ6DQMAIBTFLLO72DM"), # buyer
+        decode_address("QHGMAMCTEHZ2RQV2DRXSPAKIIT3REVK46CHNDJSW6WNXJLSJ7BB76NHDGY"), # seller
+        "" # arbiter
     ]
 
     app_id = create_app(
@@ -109,7 +128,11 @@ def main():
             algod_client, account.address_from_private_key(creator_private_key), app_id
     ),
 
-    print("Global state:", global_state)
+    print("Global state: {}".format(
+            json.dumps(global_state, indent=4)
+        )
+    )
 
 if __name__ == "__main__":
     main()
+    # print(decode_address("RHKHUONCBB7JOIQ2RDCSV3NUX5JFKLLOG2RKN4LRIJ6DQMAIBTFLLO72DM"))
