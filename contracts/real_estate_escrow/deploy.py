@@ -66,7 +66,7 @@ def main():
     # declare application state storage (immutable)
     local_ints = 0
     local_bytes = 0
-    global_ints = 10
+    global_ints = 11
     global_bytes = 4
     global_schema = transaction.StateSchema(global_ints, global_bytes)
     local_schema = transaction.StateSchema(local_ints, local_bytes)
@@ -85,22 +85,12 @@ def main():
         algod_client, clear_state_program_teal
     )
 
-    status = algod_client.status()
-    # inspectionBegin = status["last-round"] + 10
-    # inspectionEnd = inspectionBegin + 20
     inspectionBegin = int(get_current_timestamp())
     inspectionEnd = int(get_future_timestamp_in_secs(60))
     inspectionExtension = int(get_future_timestamp_in_secs(120))
-
     closingDate = int(get_future_timestamp_in_secs(240))
     closingDateExtension = int(get_future_timestamp_in_secs(360))
     
-    print('inspectionBegin', inspectionBegin)
-    print('inspectionEnd', inspectionEnd)
-    print('inspectionExtension', inspectionEnd)
-    print('closingDate', closingDate)
-    print('closingDateExtension', closingDateExtension)
-
     app_args = [
         intToBytes(inspectionBegin), #
         intToBytes(inspectionEnd), #
@@ -108,7 +98,8 @@ def main():
         intToBytes(closingDate), #
         intToBytes(closingDateExtension), #
         3000, # sale_price
-        1000, # escrow_amount
+        1000, # 1st_escrow_amount
+        2000, # 2nd_escrow_amount
         decode_address("RHKHUONCBB7JOIQ2RDCSV3NUX5JFKLLOG2RKN4LRIJ6DQMAIBTFLLO72DM"), # buyer
         decode_address("QHGMAMCTEHZ2RQV2DRXSPAKIIT3REVK46CHNDJSW6WNXJLSJ7BB76NHDGY"), # seller
         "" # arbiter

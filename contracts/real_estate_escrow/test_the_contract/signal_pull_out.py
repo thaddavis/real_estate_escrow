@@ -27,26 +27,17 @@ def trigger_pull_out(client, private_key, app_id, app_args):
     tx_id = signed_txn.transaction.get_txid()
 
     # send transaction
-    # client.send_transactions([signed_txn])
+    client.send_transactions([signed_txn])
 
     # await confirmation
-    # wait_for_confirmation(client, tx_id)
+    wait_for_confirmation(client, tx_id)
 
-    drr = transaction.create_dryrun(client, [signed_txn], latest_timestamp=1656559091)
-    endDrResult = algod_client.dryrun(drr)
-    # print("Global state: {}".format(
-    #         json.dumps(endDrResult, indent=4)
-    #     )
-    # )
-
-    with open('endDrResult.json', 'w') as f:
-        json.dump(endDrResult, f)
 
 if __name__ == "__main__":
     algod_client = algod.AlgodClient(config.algod_token, config.algod_address)
     buyer_private_key = get_private_key_from_mnemonic(config.buyer_mnemonic)
 
     app_args = [
-        "pull_out"
+        "signal_pull_out"
     ]
     trigger_pull_out(algod_client, buyer_private_key, config.app_id, app_args)

@@ -1,3 +1,4 @@
+from re import M
 import sys
 from pathlib import Path
 sys.path.append(str(Path(__file__).absolute().parent.parent.parent))
@@ -12,42 +13,40 @@ def approval_program():
     global_seller=Bytes("seller") # byteslice
     global_arbiter=Bytes("arbiter") #byteslice
     global_buyer=Bytes("buyer") # byteslice
-    global_app_id=Bytes("app_id") # byteslice
     # ^^^ ^^^ ^^^
 
-    pull_out=Bytes("pull_out") # CONSTANT
+    # vvv vvv vvv
+    GLOBAL_INSPECTION_BEGIN = Bytes("inspection_begin")
+    GLOBAL_INSPECTION_END = Bytes("inspection_end")
+    GLOBAL_INSPECTION_EXTENSION = Bytes("inspection_extension")
+    GLOBAL_CLOSING_DATE = Bytes("closing_date")
+    GLOBAL_CLOSING_DATE_EXTENSION = Bytes("closing_date_extension")
+    # ^^^ ^^^ ^^^
+
+    PULL_OUT=Bytes("pull_out") # CONSTANT
+    SIGNAL_PULL_OUT=Bytes("signal_pull_out") # CONSTANT
     buyer_withdraw_funds=Bytes("buyer_withdraw_funds") # CONSTANT
     seller_withdraw_funds=Bytes("seller_withdraw_funds") # CONSTANT
-    global_escrow_amount = Bytes("global_escrow_amount") # CONSTANT
-    global_trigger_pull_out_called_counter = Bytes("global_trigger_pull_out_called_counter") # CONSTANT
+    global_1st_escrow_amount = Bytes("global_1st_escrow_amount") # CONSTANT
+    global_2nd_escrow_amount = Bytes("global_2nd_escrow_amount") # CONSTANT
+    GLOBAL_SIGNAL_PULL_OUT = Bytes("global_signal_pull_out") # CONSTANT
     global_trigger_fund_account_called_counter = Bytes("global_trigger_fund_account_called_counter") # CONSTANT
     
-
     scratch_int = ScratchVar(TealType.uint64)
     
     @Subroutine(TealType.none)
-    def trigger_pull_out():
+    def signal_trigger_pull_out():
         return Seq(
-            scratch_int.store(App.globalGet(global_trigger_pull_out_called_counter)),
+            scratch_int.store(App.globalGet(GLOBAL_SIGNAL_PULL_OUT)),
             If(
                 And(
                     scratch_int.load() < Int(UINT64_MAX),
-                    Txn.sender() == App.globalGet(global_buyer)
+                    Txn.sender() == App.globalGet(global_buyer),
+                    Global.latest_timestamp() < App.globalGet(GLOBAL_INSPECTION_END)
                 )
             )
             .Then(
-                Seq(
-                    App.globalPut(global_trigger_pull_out_called_counter, App.globalGet(global_trigger_pull_out_called_counter) + Int(1)),
-                    InnerTxnBuilder.Begin(),
-                    InnerTxnBuilder.SetFields({
-                        TxnField.type_enum: TxnType.Payment,
-                        TxnField.amount: App.globalGet(global_escrow_amount) - Global.min_txn_fee(),
-                        TxnField.sender: Global.current_application_address(),
-                        TxnField.receiver: Txn.sender(),  # Funds receiver
-                        TxnField.fee: Global.min_txn_fee(),  # It has already been paid for
-                    }),
-                    InnerTxnBuilder.Submit()
-                )
+                App.globalPut(GLOBAL_SIGNAL_PULL_OUT, App.globalGet(GLOBAL_SIGNAL_PULL_OUT) + Int(1))
             )
             .Else(
                 Reject()
@@ -60,26 +59,64 @@ def approval_program():
         return Seq(
             If(
                 And(
-                    Txn.first_valid() >= App.globalGet(Bytes("inspection_end")),
-                    App.globalGet(global_trigger_pull_out_called_counter) == Int(0),
-                    Txn.type_enum() == TxnType.Payment,
-                    Txn.close_remainder_to() == Global.zero_address(),
-                    Txn.rekey_to() == Global.zero_address(),
-                    Or(
-                        Txn.sender() == App.globalGet(Bytes("seller")),
-                        Txn.receiver() == App.globalGet(Bytes("seller")),
-                    )
+                    Txn.sender() == App.globalGet(global_seller),
+                    App.globalGet(GLOBAL_SIGNAL_PULL_OUT) == Int(0),
+                    Global.latest_timestamp() > App.globalGet(GLOBAL_CLOSING_DATE),
                 )
             ).Then(
-                Approve()
-            ).Else(
-                Reject()
-            )
+                Seq(
+                    InnerTxnBuilder.Begin(),
+                    InnerTxnBuilder.SetFields({
+                        TxnField.type_enum: TxnType.Payment,
+                        TxnField.amount: App.globalGet(global_1st_escrow_amount) - Global.min_txn_fee(),
+                        TxnField.sender: Global.current_application_address(),
+                        TxnField.receiver: Txn.sender(),
+                        TxnField.fee: Global.min_txn_fee(),
+                    }),
+                    InnerTxnBuilder.Submit()
+                )
+            ),
+            Approve()
+            # .ElseIf(
+            #     True
+            # ).Then(
+            #     Reject()
+            # )
         )
 
     @Subroutine(TealType.none)
     def trigger_buyer_withdraw_funds(): 
         return Seq(
+            If(
+                And(
+                    Txn.sender() == App.globalGet(global_buyer),
+                    Or(
+                        And(
+                            Global.latest_timestamp() < App.globalGet(GLOBAL_INSPECTION_END)
+                        ),
+                        And(
+                            App.globalGet(GLOBAL_SIGNAL_PULL_OUT) > Int(0),
+                            Global.latest_timestamp() < App.globalGet(GLOBAL_INSPECTION_EXTENSION),
+                        )
+                    )   
+                )
+            )
+            .Then(
+                Seq(
+                    InnerTxnBuilder.Begin(),
+                    InnerTxnBuilder.SetFields({
+                        TxnField.type_enum: TxnType.Payment,
+                        TxnField.amount: App.globalGet(global_1st_escrow_amount) - Global.min_txn_fee(),
+                        TxnField.sender: Global.current_application_address(),
+                        TxnField.receiver: Txn.sender(),
+                        TxnField.fee: Global.min_txn_fee(),
+                    }),
+                    InnerTxnBuilder.Submit()
+                )
+            )
+            .Else(
+                Reject()
+            ),
             Approve()
         )
 
@@ -88,10 +125,20 @@ def approval_program():
         return Seq([
             scratch_int.store(App.globalGet(global_trigger_fund_account_called_counter)),
             If(
-                And(
-                    scratch_int.load() < Int(UINT64_MAX),
-                    Gtxn[0].sender() == App.globalGet(global_buyer),
-                    Gtxn[0].amount() == App.globalGet(global_escrow_amount),
+                Or(
+                    And(
+                        scratch_int.load() < Int(UINT64_MAX),
+                        Gtxn[0].sender() == App.globalGet(global_buyer),
+                        Gtxn[0].amount() == App.globalGet(global_1st_escrow_amount),
+                        Global.latest_timestamp() < App.globalGet(GLOBAL_INSPECTION_END)
+                    ),
+                    And(
+                        scratch_int.load() < Int(UINT64_MAX),
+                        Gtxn[0].sender() == App.globalGet(global_buyer),
+                        Gtxn[0].amount() == App.globalGet(global_2nd_escrow_amount),
+                        Global.latest_timestamp() > App.globalGet(GLOBAL_INSPECTION_END),
+                        Global.latest_timestamp() < App.globalGet(GLOBAL_CLOSING_DATE)
+                    )
                 )
             )
             .Then(
@@ -106,10 +153,9 @@ def approval_program():
     return program.event(
         init=Seq(
             App.globalPut(global_creator, Txn.sender()),
-            App.globalPut(global_app_id, Txn.application_id()),
             App.globalPut(Bytes("inspection_begin"), Btoi(Txn.application_args[0])),
             App.globalPut(Bytes("inspection_end"), Btoi(Txn.application_args[1])),
-            App.globalPut(Bytes("inspection_extension"), Btoi(Txn.application_args[2])),
+            App.globalPut(GLOBAL_INSPECTION_EXTENSION, Btoi(Txn.application_args[2])),
             App.globalPut(Bytes("closing_date"), Btoi(Txn.application_args[3])),
             App.globalPut(Bytes("closing_date_extension"), Btoi(Txn.application_args[4])),
             App.globalPut(Bytes("sale_price"), 
@@ -121,7 +167,7 @@ def approval_program():
                     Reject()
                 )
             ),
-            App.globalPut(global_escrow_amount,
+            App.globalPut(global_1st_escrow_amount,
                 If(Btoi(Txn.application_args[6]) > Int(2000))
                 .Then(
                     Btoi(Txn.application_args[6])
@@ -130,16 +176,25 @@ def approval_program():
                     Int(2000)
                 )
             ),
-            App.globalPut(global_buyer, Txn.application_args[7]),
-            App.globalPut(global_seller, Txn.application_args[8]),
-            App.globalPut(global_arbiter, Txn.application_args[9]),
-            App.globalPut(global_trigger_pull_out_called_counter, Int(0)),
+            App.globalPut(global_2nd_escrow_amount,
+                If(Btoi(Txn.application_args[7]) > Int(2000))
+                .Then(
+                    Btoi(Txn.application_args[7])
+                )
+                .Else(
+                    Int(2000)
+                )
+            ),
+            App.globalPut(global_buyer, Txn.application_args[8]),
+            App.globalPut(global_seller, Txn.application_args[9]),
+            App.globalPut(global_arbiter, Txn.application_args[10]),
+            App.globalPut(GLOBAL_SIGNAL_PULL_OUT, Int(0)),
             App.globalPut(global_trigger_fund_account_called_counter, Int(0)),
             Approve()
         ),
         no_op=Seq(
             Cond(
-                [ Txn.application_args[0] == pull_out, trigger_pull_out() ],
+                [ Txn.application_args[0] == SIGNAL_PULL_OUT, signal_trigger_pull_out() ],
                 [ Txn.application_args[0] == seller_withdraw_funds, trigger_seller_withdraw_funds()],
                 [ Txn.application_args[0] == buyer_withdraw_funds, trigger_buyer_withdraw_funds()],
                 [ 
